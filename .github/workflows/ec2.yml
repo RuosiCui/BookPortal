@@ -116,11 +116,12 @@ jobs:
           
           # Get current GitHub Actions runner IP
           echo "0. Current GitHub Actions runner IP:"
-          curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "Could not determine IP"
+          RUNNER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "unknown")
+          echo "Runner IP: $RUNNER_IP"
           
-          # Get GitHub IP ranges for reference
-          echo "1. GitHub Actions IP ranges that should be allowed in security group:"
-          curl -s https://api.github.com/meta | jq -r '.actions[]' | head -10
+          # Get GitHub IP ranges for reference (with error handling)
+          echo "1. GitHub Actions IP ranges (sample):"
+          curl -s https://api.github.com/meta | jq -r '.actions[]' 2>/dev/null | head -5 || echo "Could not fetch GitHub IP ranges"
           
           # Test basic network connectivity
           echo "2. Testing DNS resolution..."
@@ -132,22 +133,27 @@ jobs:
           echo "4. Testing port 22 connectivity..."
           timeout 10 bash -c "echo >/dev/tcp/$HOST/22" && echo "✅ Port 22 is open" || echo "❌ Port 22 is not reachable"
           
-          echo "5. Testing SSH with reduced timeout to avoid hanging..."
-          timeout 45 ssh -vvv -o ConnectTimeout=15 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no -o BatchMode=yes -i key.pem "$USER@$HOST" 'echo "SSH connection successful!"' || {
+          echo "5. Testing SSH with reduced timeout..."
+          timeout 30 ssh -vvv -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=no -o BatchMode=yes -i key.pem "$USER@$HOST" 'echo "SSH connection successful!"' && {
+            echo "✅ SSH connection successful!"
+            exit 0
+          } || {
             echo "❌ SSH connection failed"
             echo ""
-            echo "🔍 DIAGNOSIS: Connection established but SSH banner exchange timed out"
-            echo "This indicates a SECURITY GROUP CONFIGURATION issue."
+            echo "🔍 DIAGNOSIS: Runner IP $RUNNER_IP cannot complete SSH handshake"
             echo ""
-            echo "🛠️  SOLUTION: Update your EC2 security group to allow SSH (port 22) from:"
-            echo "   - GitHub Actions IP ranges (see above), OR"
-            echo "   - 0.0.0.0/0 (less secure but simpler)"
+            echo "🛠️  Your security group shows 0.0.0.0/0 but the connection still fails."
+            echo "This could be:"
+            echo "   - Network ACLs blocking the connection"
+            echo "   - VPC routing issues"
+            echo "   - SSH service configuration issues"
+            echo "   - Instance in private subnet without proper NAT gateway"
             echo ""
-            echo "📍 Steps:"
-            echo "   1. Go to AWS Console → EC2 → Security Groups"
-            echo "   2. Find your instance's security group"
-            echo "   3. Edit inbound rules"
-            echo "   4. Add SSH rule: Type=SSH, Port=22, Source=0.0.0.0/0"
+            echo "📍 Next steps:"
+            echo "   1. Check Network ACLs in your VPC"
+            echo "   2. Verify instance is in a public subnet"
+            echo "   3. Check VPC route table has 0.0.0.0/0 → Internet Gateway"
+            echo "   4. Try connecting from EC2 Instance Connect to test SSH service"
             exit 1
           }
 
