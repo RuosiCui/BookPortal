@@ -90,12 +90,12 @@ jobs:
       - name: SSH smoke test (verbose)
         shell: bash
         run: |
-          ssh -vvv -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i key.pem "$USER@$HOST" 'whoami && hostname && ls -la /home/ubuntu'
+          ssh -vvv -o StrictHostKeyChecking=no -o ConnectTimeout=100 -i key.pem "$USER@$HOST" 'whoami && hostname && ls -la /home/ubuntu'
 
       - name: Remote docker compose refresh
         shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i key.pem "$USER@$HOST" '
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=100 -i key.pem "$USER@$HOST" '
             set -e
             cd /home/ubuntu
             docker login -u "'"$DH_USER"'" -p "'"$DH_TOKEN"'"
