@@ -36,6 +36,10 @@ jobs:
         uses: github/codeql-action/init@v2
         with:
           languages: ${{ matrix.language }}
+      
+      - name: Maven package (skip tests)     # 👈 here
+        run: mvn -B -DskipTests package
+        working-directory: ./book-portal-be
 
       - run: mvn -B package --file pom.xml
         working-directory: ./book-portal-be
