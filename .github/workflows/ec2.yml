@@ -1,38 +1,94 @@
+# # name: AWS-EC2 Instance CD
+
+# # on:
+# #   workflow_run:
+# #     workflows: ["Node.js CI"]
+# #     types: [completed]
+
+# # jobs:
+# #   on-success:
+
+# #     runs-on: ubuntu-latest
+# #     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+# #     steps:
+# #       - name: AWS SSM Send-Command
+# #         uses: peterkimzz/aws-ssm-send-command@v1.1.1
+# #         with:
+# #           # AWS access key id
+# #           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+# #           # AWS secret access key
+# #           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+# #           # Where EC2 instance is
+# #           aws-region: ${{ secrets.AWS_REGION }}
+# #           # AWS EC2 Instance id or ids
+# #           instance-ids: ${{ secrets.AWS_INSTANCE_ID }}
+# #           # Command execution location
+# #           working-directory: /home/ec2-user
+# #           # Bash command you want to execute
+# #           command: |
+# #             sudo docker-compose stop
+# #             sudo docker-compose rm -f
+# #             sudo docker-compose pull
+# #             sudo docker-compose up -d
+# #             sudo docker image prune -af
+# #           # Comment for Send-Command
+# #           comment: docker-compose.yml file re-pulls newer versions of book-portal images and runs them on the instance.
 # name: Deploy via SSH (no IAM)
+
+# on:
+#   workflow_run:
+#     workflows: ['Node.js CI']   # run after FE/Proxy builds succeed
+#     types: [completed]
+#   workflow_dispatch: {}          # allow manual "Run workflow"
+
+# jobs:
+#   deploy:
+#     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Remote docker-compose refresh
+#         uses: appleboy/ssh-action@v1.2.0
+#         with:
+#           host: ${{ secrets.EC2_HOST }}
+#           username: ${{ secrets.EC2_USER }}
+#           key: ${{ secrets.EC2_KEY }}
+#           script: |
+#             cd /home/ubuntu
+#             docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} -p ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+#             docker compose stop || true
+#             docker compose rm -f || true
+#             docker compose pull
+#             docker compose up -d
+#             docker image prune -af || true
+name: Deploy via SSH (no IAM)
 
 on:
   workflow_run:
-    workflows: ['Node.js CI', 'Java CI with Maven']   # deploy after either CI succeeds
+    workflows: ['Node.js CI', 'Java CI with Maven']  # deploy after either CI succeeds
     types: [completed]
-  workflow_dispatch: {}                                # manual "Run workflow"
+  workflow_dispatch:
 
 jobs:
   deploy:
     if: ${{ (github.event.workflow_run && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     env:
-      HOST: ${{ secrets.EC2_HOST }}                   # Elastic IP or Public DNS
-      USER: ${{ secrets.EC2_USER }}                   # set this secret to: ubuntu
-      DH_USER: ${{ secrets.DOCKER_HUB_USERNAME }}     # rcui2
+      HOST: ${{ secrets.EC2_HOST }}                  # Elastic IP / Public DNS
+      USER: ${{ secrets.EC2_USER }}                  # should be 'ubuntu'
+      DH_USER: ${{ secrets.DOCKER_HUB_USERNAME }}    # rcui2
       DH_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
     steps:
-      - name: Write private key
-        shell: bash
+      - name: Create SSH key file
         run: |
           umask 077
-          cat > key.pem <<'EOF'
-${{ secrets.EC2_KEY }}
-EOF
+          echo "${{ secrets.EC2_KEY }}" > key.pem
           chmod 600 key.pem
 
       - name: SSH smoke test
-        shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i key.pem "$USER@$HOST" \
-            'whoami && hostname && ls -la /home/ubuntu'
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i key.pem "$USER@$HOST" 'whoami && hostname && ls -la /home/ubuntu'
 
       - name: Remote docker compose refresh
-        shell: bash
         run: |
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i key.pem "$USER@$HOST" '
             set -e
