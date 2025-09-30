@@ -64,7 +64,7 @@ name: Deploy via SSH (no IAM)
 
 on:
   workflow_run:
-    workflows: ['Node.js CI', 'Java CI with Maven']  # deploy after either CI succeeds
+    workflows: ['Node.js CI', 'Java CI with Maven']
     types: [completed]
   workflow_dispatch:
 
@@ -73,22 +73,27 @@ jobs:
     if: ${{ (github.event.workflow_run && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     env:
-      HOST: ${{ secrets.EC2_HOST }}                  # Elastic IP / Public DNS
-      USER: ${{ secrets.EC2_USER }}                  # should be 'ubuntu'
-      DH_USER: ${{ secrets.DOCKER_HUB_USERNAME }}    # rcui2
+      HOST: ${{ secrets.EC2_HOST }}                # Elastic IP / Public DNS
+      USER: ubuntu                                  # hardcode since we know it's Ubuntu
+      DH_USER: ${{ secrets.DOCKER_HUB_USERNAME }}   # rcui2
       DH_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
     steps:
-      - name: Create SSH key file
+      - name: Write private key from base64
+        shell: bash
         run: |
           umask 077
-          echo "${{ secrets.EC2_KEY }}" > key.pem
+          echo "${{ secrets.EC2_KEY_B64 }}" | base64 -d > key.pem
+          # normalize line endings just in case
+          sed -i 's/\r$//' key.pem
           chmod 600 key.pem
 
-      - name: SSH smoke test
+      - name: SSH smoke test (verbose)
+        shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i key.pem "$USER@$HOST" 'whoami && hostname && ls -la /home/ubuntu'
+          ssh -vvv -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i key.pem "$USER@$HOST" 'whoami && hostname && ls -la /home/ubuntu'
 
       - name: Remote docker compose refresh
+        shell: bash
         run: |
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i key.pem "$USER@$HOST" '
             set -e
@@ -98,3 +103,4 @@ jobs:
             docker compose up -d
             docker image prune -af || true
           '
+
