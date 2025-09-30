@@ -41,8 +41,8 @@ jobs:
         run: mvn -B -DskipTests package
         working-directory: ./book-portal-be
 
-      - run: mvn -B package --file pom.xml
-        working-directory: ./book-portal-be
+      # - run: mvn -B package --file pom.xml
+      #   working-directory: ./book-portal-be
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2
