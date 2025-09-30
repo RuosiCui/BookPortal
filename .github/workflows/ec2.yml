@@ -108,6 +108,14 @@ jobs:
           cat key.pem >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+      - name: Simple SSH test (minimal options)
+        shell: bash
+        timeout-minutes: 2
+        continue-on-error: true
+        run: |
+          echo "Testing basic SSH connection with minimal options..."
+          ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -i key.pem "$USER@$HOST" 'echo "Basic SSH works!"'
+
       - name: Comprehensive connectivity test
         shell: bash
         timeout-minutes: 3
@@ -157,8 +165,8 @@ jobs:
             exit 1
           }
 
-      - name: Alternative deployment via AWS Systems Manager (if SSH fails)
-        if: failure()
+      - name: Alternative deployment via AWS Systems Manager (if SSH fails and AWS secrets available)
+        if: failure() && secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_REGION != '' && secrets.AWS_INSTANCE_ID != ''
         uses: peterkimzz/aws-ssm-send-command@v1.1.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
