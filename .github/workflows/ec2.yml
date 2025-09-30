@@ -108,21 +108,34 @@ jobs:
           cat key.pem >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Test SSH connection
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ env.HOST }}
-          username: ${{ env.USER }}
-          key: ${{ env.DECODED_SSH_KEY }}
-          timeout: 100s
-          command_timeout: 30s
-          script: |
-            whoami
-            hostname
-            ls -la /home/ubuntu
-            echo "SSH connection successful!"
+      - name: Comprehensive connectivity test
+        shell: bash
+        timeout-minutes: 3
+        run: |
+          echo "=== Testing connectivity to $HOST ==="
+          
+          # Test basic network connectivity
+          echo "1. Testing DNS resolution..."
+          nslookup "$HOST" || echo "DNS resolution failed"
+          
+          echo "2. Testing ping connectivity..."
+          ping -c 3 -W 5 "$HOST" || echo "Ping failed (normal for EC2)"
+          
+          echo "3. Testing port 22 connectivity..."
+          timeout 10 bash -c "echo >/dev/tcp/$HOST/22" && echo "✅ Port 22 is open" || echo "❌ Port 22 is not reachable"
+          
+          echo "4. Testing SSH with verbose output..."
+          timeout 45 ssh -vvv -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o BatchMode=yes -i key.pem "$USER@$HOST" 'echo "SSH connection successful!"' || {
+            echo "❌ SSH connection failed"
+            echo "This usually indicates:"
+            echo "- Security group doesn't allow SSH from GitHub Actions IP"
+            echo "- Instance is not running"
+            echo "- Wrong hostname/IP in EC2_HOST secret"
+            exit 1
+          }
 
-      - name: Remote docker compose refresh
+      - name: Deploy via SSH (only if connectivity test passed)
+        if: success()
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ env.HOST }}
@@ -131,10 +144,12 @@ jobs:
           timeout: 300s
           command_timeout: 120s
           script: |
+            echo "Starting deployment on $(hostname)..."
             set -e
             cd /home/ubuntu
             docker login -u "${{ env.DH_USER }}" -p "${{ env.DH_TOKEN }}"
             docker compose pull
             docker compose up -d
             docker image prune -af || true
+            echo "Deployment completed successfully!"
 
